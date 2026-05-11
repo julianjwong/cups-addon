@@ -3,12 +3,12 @@ FROM $BUILD_FROM
 
 # Add env
 ENV LANG=C.UTF-8
-# Set CUPS environment variables for data persistence
-ENV CUPS_DATADIR=/data/cups
-ENV CUPS_CACHEDIR=/data/cups/cache
-ENV CUPS_LOGDIR=/data/cups/logs
-ENV CUPS_STATEDIR=/data/cups/state
-ENV CUPS_SERVERROOT=/data/cups/config
+# Set CUPS environment variables for data persistence (HA shared directory)
+ENV CUPS_DATADIR=/share/cups
+ENV CUPS_CACHEDIR=/share/cups/cache
+ENV CUPS_LOGDIR=/share/cups/logs
+ENV CUPS_STATEDIR=/share/cups/state
+ENV CUPS_SERVERROOT=/share/cups/config
 
 # Setup base
 RUN \

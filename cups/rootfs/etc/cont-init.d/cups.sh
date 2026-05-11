@@ -1,22 +1,22 @@
 #!/usr/bin/with-contenv bash
 
-# Create CUPS data directories for persistence
-mkdir -p /data/cups/cache
-mkdir -p /data/cups/logs
-mkdir -p /data/cups/state
-mkdir -p /data/cups/config
-mkdir -p /data/cups/config/ppd
-mkdir -p /data/cups/config/ssl
+# Create CUPS data directories for persistence in HA shared directory
+mkdir -p /share/cups/cache
+mkdir -p /share/cups/logs
+mkdir -p /share/cups/state
+mkdir -p /share/cups/config
+mkdir -p /share/cups/config/ppd
+mkdir -p /share/cups/config/ssl
 
 # Set proper permissions
-chown -R root:lp /data/cups
-chmod -R 775 /data/cups
+chown -R root:lp /share/cups
+chmod -R 775 /share/cups
 
 # Create CUPS configuration directory if it doesn't exist
 mkdir -p /etc/cups
 
 # Basic CUPS configuration without admin authentication
-cat > /data/cups/config/cupsd.conf << EOL
+cat > /share/cups/config/cupsd.conf << EOL
 # Listen on all interfaces
 Listen 0.0.0.0:631
 
@@ -64,11 +64,29 @@ JobSheets none,none
 PreserveJobHistory No
 EOL
 
-# Create a symlink from the default config location to our persistent location
-ln -sf /data/cups/config/cupsd.conf /etc/cups/cupsd.conf
-ln -sf /data/cups/config/printers.conf /etc/cups/printers.conf
-ln -sf /data/cups/config/ppd /etc/cups/ppd
-ln -sf /data/cups/config/ssl /etc/cups/ssl
+# Ensure printers.conf exists (CUPS will populate it; empty file prevents dangling symlink)
+touch /share/cups/config/printers.conf
+
+# Migrate legacy data from /data/cups to /share/cups if this is a first-run after migration
+if [ -d /data/cups/config ] && [ ! -f /share/cups/config/.migrated ]; then
+    echo "Migrating CUPS data from /data/cups to /share/cups..."
+    cp -r /data/cups/config/printers.conf /share/cups/config/ 2>/dev/null || true
+    cp -r /data/cups/config/ppd/* /share/cups/config/ppd/ 2>/dev/null || true
+    cp -r /data/cups/config/ssl/* /share/cups/config/ssl/ 2>/dev/null || true
+    cp -r /data/cups/config/cupsd.conf /share/cups/config/ 2>/dev/null || true
+    # Migrate cache, logs, state if present
+    cp -r /data/cups/cache/* /share/cups/cache/ 2>/dev/null || true
+    cp -r /data/cups/logs/* /share/cups/logs/ 2>/dev/null || true
+    cp -r /data/cups/state/* /share/cups/state/ 2>/dev/null || true
+    touch /share/cups/config/.migrated
+    echo "Migration complete."
+fi
+
+# Create a symlink from the default config location to our persistent shared location
+ln -sf /share/cups/config/cupsd.conf /etc/cups/cupsd.conf
+ln -sf /share/cups/config/printers.conf /etc/cups/printers.conf
+ln -sf /share/cups/config/ppd /etc/cups/ppd
+ln -sf /share/cups/config/ssl /etc/cups/ssl
 
 # Install user-supplied printer driver .deb (e.g. Canon UFR II for MF4412)
 DRIVER_DEB=$(jq -r '.printer_driver_deb // empty' /data/options.json 2>/dev/null)
