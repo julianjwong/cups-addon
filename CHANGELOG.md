@@ -1,0 +1,35 @@
+# Changelog
+
+## [1.1.1] — 2026-05-15
+
+- Fix build failure on Alpine 3.23 (HA OS 2026.5): remove unavailable packages hplip, foomatic-db, foomatic-db-ppds
+
+## [1.1.0] — 2026-05-15
+
+- Upgrade to CUPS 3.0
+- Fix CUPS printer config persistence to HA shared directory (/share/cups)
+- Fix build_from config with default BUILD_FROM arg for reliable Docker builds
+
+## [1.0.0] — 2026-03-30
+
+- Add Canon MF4412 (UFR II) printer driver support
+- Install printer drivers (HP, Gutenprint, Foomatic) in container setup
+
+## [0.9.0] — 2026-01-25
+
+- Persist PPD documents across restarts
+
+## [0.8.0] — 2025-05-08
+
+- Move everything into a subfolder and add repository YAML
+- Update docs for manual installation
+
+## [0.7.0] — 2025-03-18
+
+- Add Epson printer drivers
+- Persist configuration and printer lists
+
+## [0.6.0] — 2025-03-15
+
+- Remove basic authentication
+- Initial CUPS add-on release
