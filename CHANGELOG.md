@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0] — 2026-05-15
+
+- Fix printer list not persisting across container restarts: replace file-level
+  CUPS config symlinks with a directory-level symlink (/etc/cups → /share/cups/config)
+  to prevent CUPS atomic file writes from breaking the symlink and writing to
+  ephemeral storage
+
 ## [1.1.1] — 2026-05-15
 
 - Fix build failure on Alpine 3.23 (HA OS 2026.5): remove unavailable packages hplip, foomatic-db, foomatic-db-ppds

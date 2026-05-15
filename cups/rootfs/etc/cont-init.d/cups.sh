@@ -1,6 +1,8 @@
 #!/usr/bin/with-contenv bash
 
-# Create CUPS data directories for persistence in HA shared directory
+# ─────────────────────────────────────────────────────────────
+# Create CUPS data directories in the persistent HA share
+# ─────────────────────────────────────────────────────────────
 mkdir -p /share/cups/cache
 mkdir -p /share/cups/logs
 mkdir -p /share/cups/state
@@ -12,11 +14,10 @@ mkdir -p /share/cups/config/ssl
 chown -R root:lp /share/cups
 chmod -R 775 /share/cups
 
-# Create CUPS configuration directory if it doesn't exist
-mkdir -p /etc/cups
-
-# Basic CUPS configuration without admin authentication
-cat > /share/cups/config/cupsd.conf << EOL
+# ─────────────────────────────────────────────────────────────
+# Write a fresh cupsd.conf (this is static config we own)
+# ─────────────────────────────────────────────────────────────
+cat > /share/cups/config/cupsd.conf << 'EOL'
 # Listen on all interfaces
 Listen 0.0.0.0:631
 
@@ -64,17 +65,13 @@ JobSheets none,none
 PreserveJobHistory No
 EOL
 
-# Ensure printers.conf exists (CUPS will populate it; empty file prevents dangling symlink)
-touch /share/cups/config/printers.conf
-
-# Migrate legacy data from /data/cups to /share/cups if this is a first-run after migration
+# Migrate legacy data from /data/cups to /share/cups if present
 if [ -d /data/cups/config ] && [ ! -f /share/cups/config/.migrated ]; then
     echo "Migrating CUPS data from /data/cups to /share/cups..."
     cp -r /data/cups/config/printers.conf /share/cups/config/ 2>/dev/null || true
     cp -r /data/cups/config/ppd/* /share/cups/config/ppd/ 2>/dev/null || true
     cp -r /data/cups/config/ssl/* /share/cups/config/ssl/ 2>/dev/null || true
     cp -r /data/cups/config/cupsd.conf /share/cups/config/ 2>/dev/null || true
-    # Migrate cache, logs, state if present
     cp -r /data/cups/cache/* /share/cups/cache/ 2>/dev/null || true
     cp -r /data/cups/logs/* /share/cups/logs/ 2>/dev/null || true
     cp -r /data/cups/state/* /share/cups/state/ 2>/dev/null || true
@@ -82,11 +79,65 @@ if [ -d /data/cups/config ] && [ ! -f /share/cups/config/.migrated ]; then
     echo "Migration complete."
 fi
 
-# Create a symlink from the default config location to our persistent shared location
-ln -sf /share/cups/config/cupsd.conf /etc/cups/cupsd.conf
-ln -sf /share/cups/config/printers.conf /etc/cups/printers.conf
-ln -sf /share/cups/config/ppd /etc/cups/ppd
-ln -sf /share/cups/config/ssl /etc/cups/ssl
+# ─────────────────────────────────────────────────────────────
+# Replace /etc/cups with a directory-level symlink so that
+# CUPS atomic file writes (write .N, rename .O, rename .N)
+# operate inside the persistent storage instead of replacing
+# individual file symlinks with ephemeral real files.
+#
+# Background: CUPS saves printers.conf atomically — it writes
+# printers.conf.N, renames printers.conf→printers.conf.O, then
+# renames printers.conf.N→printers.conf. With file-level
+# symlinks the first rename() replaces the symlink itself with
+# a real file in the container's ephemeral layer, so all
+# subsequent writes bypass the persistent share. After a
+# container restart the real file is gone and the old
+# (empty/stale) printers.conf in /share/cups/ is used again.
+#
+# A directory symlink avoids this because rename() only touches
+# files inside the resolved target directory, leaving /etc/cups
+# as a symlink intact.
+# ─────────────────────────────────────────────────────────────
+
+if [ -d /etc/cups ] && [ ! -L /etc/cups ]; then
+    echo "Replacing /etc/cups directory with symlink to /share/cups/config..."
+
+    # Copy any default config files from the package-installed
+    # /etc/cups/ (e.g. cups-files.conf) that don't yet exist in
+    # the persistent storage.
+    for item in /etc/cups/*; do
+        [ -e "$item" ] || continue
+        base="$(basename "$item")"
+        # Skip files/dirs we manage ourselves or that may be
+        # stale from a previous file-level symlink approach.
+        case "$base" in
+            cupsd.conf|printers.conf|printers.conf.O|ppd|ssl)
+                continue
+                ;;
+        esac
+        if [ ! -e "/share/cups/config/$base" ]; then
+            cp -r "$item" "/share/cups/config/$base"
+            echo "  Copied default $base to persistent storage."
+        fi
+    done
+
+    # Safeguard: make sure printers.conf exists in the
+    # persistent location before we switch over.
+    touch /share/cups/config/printers.conf
+
+    rm -rf /etc/cups
+    ln -sf /share/cups/config /etc/cups
+    echo "/etc/cups → /share/cups/config"
+else
+    # Already a symlink or does not exist — just ensure it.
+    rm -rf /etc/cups
+    ln -sf /share/cups/config /etc/cups
+fi
+
+# Verify printers.conf exists in the persistent location
+if [ ! -f /share/cups/config/printers.conf ]; then
+    touch /share/cups/config/printers.conf
+fi
 
 # Install user-supplied printer driver .deb (e.g. Canon UFR II for MF4412)
 DRIVER_DEB=$(jq -r '.printer_driver_deb // empty' /data/options.json 2>/dev/null)
